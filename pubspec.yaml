@@ -1,0 +1,103 @@
+name: greenpos
+description: Sistema GreenPOS de gestión de restaurantes con arquitectura limpia
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Estado y arquitectura
+  flutter_riverpod: ^2.4.9
+  riverpod_annotation: ^2.3.3
+
+  # Navegación
+  go_router: ^13.0.0
+
+  # Network y API
+  dio: ^5.4.0
+  # retrofit: ^4.0.3
+  json_annotation: ^4.8.1
+
+  # Base de datos local
+  sqflite: ^2.3.0
+  path_provider: ^2.1.1
+  shared_preferences: ^2.2.2
+
+  # Firebase
+  firebase_core: ^2.24.2
+  firebase_auth: ^4.15.3
+  cloud_firestore: ^4.13.6
+  firebase_storage: ^11.5.6
+  firebase_messaging: ^14.7.9
+
+  # UI y diseño
+  cached_network_image: ^3.3.0
+  flutter_svg: ^2.0.9
+  shimmer: ^3.0.0
+  lottie: ^2.7.0
+  animations: ^2.0.8
+  flutter_staggered_animations: ^1.1.1
+
+  # Utils
+  intl: ^0.19.0
+  uuid: ^4.2.2
+  equatable: ^2.0.5
+  dartz: ^0.10.1
+  connectivity_plus: ^5.0.2
+  image_picker: ^1.0.7
+  permission_handler: ^11.1.0
+
+  # Charts y reportes
+  fl_chart: ^0.66.0
+  syncfusion_flutter_charts: ^24.1.41
+
+  # QR para mesas (deshabilitado temporalmente por compatibilidad Android)
+  qr_flutter: ^4.1.0
+  # qr_code_scanner: ^1.0.1
+
+  # Google Maps
+  google_maps_flutter: ^2.5.0
+  geolocator: ^10.1.0
+
+  cupertino_icons: ^1.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^3.0.1
+  riverpod_generator: ^2.3.9
+  build_runner: ^2.4.7
+  # retrofit_generator: ^8.0.6
+  json_serializable: ^6.7.1
+  flutter_launcher_icons: ^0.13.1
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/
+
+  # fonts:
+  #   - family: Poppins
+  #     fonts:
+  #       - asset: assets/fonts/Poppins-Regular.ttf
+  #       - asset: assets/fonts/Poppins-Bold.ttf
+  #         weight: 700
+  #       - asset: assets/fonts/Poppins-SemiBold.ttf
+  #         weight: 600
+  #       - asset: assets/fonts/Poppins-Medium.ttf
+  #         weight: 500
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icons/logo.png"
+  adaptive_icon_background: "#1A1F2E"
+  adaptive_icon_foreground: "assets/icons/logo.png"
+  remove_alpha_ios: true

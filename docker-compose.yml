@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  flutter-app:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app
+      - flutter-pub-cache:/root/.pub-cache
+    environment:
+      - FLUTTER_WEB_USE_SKIA=true
+    command: flutter run -d web-server --web-port=8080 --web-hostname=0.0.0.0
+
+volumes:
+  flutter-pub-cache:
