@@ -33,6 +33,7 @@ class AppConstants {
   static const String prefToken = 'auth_token';
   static const String prefUserId = 'user_id';
   static const String prefUserRole = 'user_role';
+  static const String prefBranchId = 'branch_id';
   static const String prefThemeMode = 'theme_mode';
 
   // Paginación

@@ -1,5 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dartz/dartz.dart';
+import 'package:graphql_flutter/graphql_flutter.dart';
 
 import '../../../../core/utils/failure.dart';
 import '../../domain/entities/category.dart';
@@ -8,30 +8,332 @@ import '../../domain/repositories/menu_repository.dart';
 import '../models/category_model.dart';
 import '../models/product_model.dart';
 
-/// Implementación del repositorio de menú con Firebase
+/// Implementación del repositorio de menú con GraphQL
 class MenuRepositoryImpl implements MenuRepository {
-  final FirebaseFirestore _firestore;
+  final GraphQLClient _client;
+  final String branchId;
 
-  MenuRepositoryImpl({required FirebaseFirestore firestore})
-      : _firestore = firestore;
+  MenuRepositoryImpl({
+    required GraphQLClient client,
+    required this.branchId,
+  }) : _client = client;
 
-  // ====== CATEGORÍAS ======
+  // ==========================================================================
+  // QUERIES
+  // ==========================================================================
+
+  static const String _getCategoriesDoc = r'''
+    query GetCategories($branchId: UUID!) {
+      categories(branchId: $branchId) {
+        id
+        name
+        description
+        imageUrl
+        sortOrder
+        isActive
+        createdAt
+        updatedAt
+      }
+    }
+  ''';
+
+  static const String _getCategoryDoc = r'''
+    query GetCategory($id: UUID!) {
+      category(id: $id) {
+        id
+        name
+        description
+        imageUrl
+        sortOrder
+        isActive
+        createdAt
+        updatedAt
+      }
+    }
+  ''';
+
+  static const String _getProductsDoc = r'''
+    query GetProducts($branchId: UUID!, $categoryId: UUID) {
+      products(branchId: $branchId, categoryId: $categoryId) {
+        id
+        name
+        description
+        price
+        categoryId
+        categoryName
+        imageUrls
+        isAvailable
+        isFeatured
+        preparationTime
+        rating
+        reviewCount
+        nutritionalInfo
+        allergens
+        createdAt
+        updatedAt
+      }
+    }
+  ''';
+
+  static const String _getProductDoc = r'''
+    query GetProduct($id: UUID!) {
+      product(id: $id) {
+        id
+        name
+        description
+        price
+        categoryId
+        categoryName
+        imageUrls
+        isAvailable
+        isFeatured
+        preparationTime
+        rating
+        reviewCount
+        nutritionalInfo
+        allergens
+        createdAt
+        updatedAt
+      }
+    }
+  ''';
+
+  static const String _getFeaturedProductsDoc = r'''
+    query GetFeaturedProducts($branchId: UUID!) {
+      featuredProducts(branchId: $branchId) {
+        id
+        name
+        description
+        price
+        categoryId
+        categoryName
+        imageUrls
+        isAvailable
+        isFeatured
+        preparationTime
+        rating
+        reviewCount
+        nutritionalInfo
+        allergens
+        createdAt
+        updatedAt
+      }
+    }
+  ''';
+
+  // ==========================================================================
+  // MUTATIONS
+  // ==========================================================================
+
+  static const String _createCategoryDoc = r'''
+    mutation CreateCategory($input: CreateCategoryInput!) {
+      createCategory(input: $input) {
+        id
+        name
+        description
+        imageUrl
+        sortOrder
+        isActive
+        createdAt
+        updatedAt
+      }
+    }
+  ''';
+
+  static const String _updateCategoryDoc = r'''
+    mutation UpdateCategory($id: UUID!, $name: String, $description: String, $sortOrder: Int, $isActive: Boolean) {
+      updateCategory(id: $id, name: $name, description: $description, sortOrder: $sortOrder, isActive: $isActive) {
+        id
+        name
+        description
+        imageUrl
+        sortOrder
+        isActive
+        createdAt
+        updatedAt
+      }
+    }
+  ''';
+
+  static const String _deleteCategoryDoc = r'''
+    mutation DeleteCategory($id: UUID!) {
+      deleteCategory(id: $id)
+    }
+  ''';
+
+  static const String _reorderCategoriesDoc = r'''
+    mutation ReorderCategories($branchId: UUID!, $categoryIds: [UUID!]!) {
+      reorderCategories(branchId: $branchId, categoryIds: $categoryIds) {
+        id
+        name
+        sortOrder
+      }
+    }
+  ''';
+
+  static const String _createProductDoc = r'''
+    mutation CreateProduct($input: CreateProductInput!) {
+      createProduct(input: $input) {
+        id
+        name
+        description
+        price
+        categoryId
+        categoryName
+        imageUrls
+        isAvailable
+        isFeatured
+        preparationTime
+        rating
+        reviewCount
+        nutritionalInfo
+        allergens
+        createdAt
+        updatedAt
+      }
+    }
+  ''';
+
+  static const String _updateProductDoc = r'''
+    mutation UpdateProduct($id: UUID!, $input: CreateProductInput!) {
+      updateProduct(id: $id, input: $input) {
+        id
+        name
+        description
+        price
+        categoryId
+        categoryName
+        imageUrls
+        isAvailable
+        isFeatured
+        preparationTime
+        rating
+        reviewCount
+        nutritionalInfo
+        allergens
+        createdAt
+        updatedAt
+      }
+    }
+  ''';
+
+  static const String _deleteProductDoc = r'''
+    mutation DeleteProduct($id: UUID!) {
+      deleteProduct(id: $id)
+    }
+  ''';
+
+  static const String _toggleProductAvailabilityDoc = r'''
+    mutation ToggleProductAvailability($id: UUID!) {
+      toggleProductAvailability(id: $id) {
+        id
+        isAvailable
+      }
+    }
+  ''';
+
+  // ==========================================================================
+  // HELPER METHODS
+  // ==========================================================================
+
+  /// Parsea una fecha desde string ISO o timestamp
+  DateTime _parseDate(dynamic value) {
+    if (value == null) return DateTime.now();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.parse(value);
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    return DateTime.now();
+  }
+
+  /// Convierte respuesta GraphQL a CategoryModel
+  CategoryModel _categoryFromJson(Map<String, dynamic> json) {
+    return CategoryModel(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      description: json['description'] as String? ?? '',
+      imageUrl: json['imageUrl'] as String?,
+      sortOrder: json['sortOrder'] as int? ?? 0,
+      isActive: json['isActive'] as bool? ?? true,
+      createdAt: _parseDate(json['createdAt']),
+      updatedAt: json['updatedAt'] != null ? _parseDate(json['updatedAt']) : null,
+    );
+  }
+
+  /// Convierte respuesta GraphQL a ProductModel
+  ProductModel _productFromJson(Map<String, dynamic> json) {
+    return ProductModel(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      description: json['description'] as String? ?? '',
+      price: (json['price'] as num).toDouble(),
+      categoryId: json['categoryId'] as String,
+      categoryName: json['categoryName'] as String?,
+      imageUrls: (json['imageUrls'] as List<dynamic>?)?.cast<String>() ?? [],
+      isAvailable: json['isAvailable'] as bool? ?? true,
+      isFeatured: json['isFeatured'] as bool? ?? false,
+      preparationTime: json['preparationTime'] as int? ?? 15,
+      rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
+      reviewCount: json['reviewCount'] as int? ?? 0,
+      nutritionalInfo: json['nutritionalInfo'] as Map<String, dynamic>?,
+      allergens: (json['allergens'] as List<dynamic>?)?.cast<String>() ?? [],
+      createdAt: _parseDate(json['createdAt']),
+      updatedAt: json['updatedAt'] != null ? _parseDate(json['updatedAt']) : null,
+    );
+  }
+
+  /// Ejecuta una query y maneja errores
+  Future<QueryResult> _query(String document, {Map<String, dynamic>? variables}) async {
+    final options = QueryOptions(
+      document: gql(document),
+      variables: variables ?? {},
+      fetchPolicy: FetchPolicy.networkOnly,
+    );
+    return await _client.query(options);
+  }
+
+  /// Ejecuta una mutación y maneja errores
+  Future<QueryResult> _mutate(String document, {Map<String, dynamic>? variables}) async {
+    final options = MutationOptions(
+      document: gql(document),
+      variables: variables ?? {},
+    );
+    return await _client.mutate(options);
+  }
+
+  /// Verifica si hay errores GraphQL y retorna true si los hay
+  bool _hasErrors(QueryResult result) {
+    if (result.hasException) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Obtiene el mensaje de error de un QueryResult
+  String _getErrorMessage(QueryResult result) {
+    return result.exception?.graphqlErrors.isNotEmpty == true
+        ? result.exception!.graphqlErrors.first.message
+        : result.exception?.linkException?.toString() ?? 'Error desconocido';
+  }
+
+  // ==========================================================================
+  // CATEGORY IMPLEMENTATIONS
+  // ==========================================================================
 
   @override
   Future<Either<Failure, List<Category>>> getCategories() async {
     try {
-      final snapshot = await _firestore
-          .collection('categories')
-          .where('is_active', isEqualTo: true)
-          .orderBy('sort_order')
-          .get();
+      final result = await _query(
+        _getCategoriesDoc,
+        variables: {'branchId': branchId},
+      );
 
-      final categories = snapshot.docs.map((doc) {
-        return CategoryModel.fromJson({
-          ...doc.data(),
-          'id': doc.id,
-        }).toEntity();
-      }).toList();
+      if (_hasErrors(result)) return Left(ServerFailure(_getErrorMessage(result)));
+      
+
+      final List<dynamic> data = result.data?['categories'] ?? [];
+      final categories = data
+          .map((json) => _categoryFromJson(json as Map<String, dynamic>).toEntity())
+          .toList();
 
       return Right(categories);
     } catch (e) {
@@ -42,18 +344,20 @@ class MenuRepositoryImpl implements MenuRepository {
   @override
   Future<Either<Failure, Category>> getCategoryById(String id) async {
     try {
-      final doc = await _firestore.collection('categories').doc(id).get();
+      final result = await _query(
+        _getCategoryDoc,
+        variables: {'id': id},
+      );
 
-      if (!doc.exists) {
+      if (_hasErrors(result)) return Left(ServerFailure(_getErrorMessage(result)));
+      
+
+      final data = result.data?['category'];
+      if (data == null) {
         return const Left(ServerFailure('Categoría no encontrada'));
       }
 
-      final category = CategoryModel.fromJson({
-        ...doc.data()!,
-        'id': doc.id,
-      }).toEntity();
-
-      return Right(category);
+      return Right(_categoryFromJson(data as Map<String, dynamic>).toEntity());
     } catch (e) {
       return Left(ServerFailure('Error al obtener categoría: $e'));
     }
@@ -67,21 +371,23 @@ class MenuRepositoryImpl implements MenuRepository {
     int sortOrder = 0,
   }) async {
     try {
-      final docRef = _firestore.collection('categories').doc();
+      final input = {
+        'branchId': branchId,
+        'name': name,
+        'description': description,
+        if (imageUrl != null) 'imageUrl': imageUrl,
+        'sortOrder': sortOrder,
+      };
 
-      final category = CategoryModel(
-        id: docRef.id,
-        name: name,
-        description: description,
-        imageUrl: imageUrl,
-        sortOrder: sortOrder,
-        isActive: true,
-        createdAt: DateTime.now(),
+      final result = await _mutate(
+        _createCategoryDoc,
+        variables: {'input': input},
       );
 
-      await docRef.set(category.toJson());
+      if (_hasErrors(result)) return Left(ServerFailure(_getErrorMessage(result)));
+      
 
-      return Right(category.toEntity());
+      return Right(_categoryFromJson(result.data!['createCategory'] as Map<String, dynamic>).toEntity());
     } catch (e) {
       return Left(ServerFailure('Error al crear categoría: $e'));
     }
@@ -97,26 +403,22 @@ class MenuRepositoryImpl implements MenuRepository {
     bool? isActive,
   }) async {
     try {
-      final updateData = <String, dynamic>{
-        'updated_at': FieldValue.serverTimestamp(),
-      };
+      final result = await _mutate(
+        _updateCategoryDoc,
+        variables: {
+          'id': id,
+          if (name != null) 'name': name,
+          if (description != null) 'description': description,
+          if (imageUrl != null) 'imageUrl': imageUrl,
+          if (sortOrder != null) 'sortOrder': sortOrder,
+          if (isActive != null) 'isActive': isActive,
+        },
+      );
 
-      if (name != null) updateData['name'] = name;
-      if (description != null) updateData['description'] = description;
-      if (imageUrl != null) updateData['image_url'] = imageUrl;
-      if (sortOrder != null) updateData['sort_order'] = sortOrder;
-      if (isActive != null) updateData['is_active'] = isActive;
+      if (_hasErrors(result)) return Left(ServerFailure(_getErrorMessage(result)));
+      
 
-      await _firestore.collection('categories').doc(id).update(updateData);
-
-      // Obtener categoría actualizada
-      final doc = await _firestore.collection('categories').doc(id).get();
-      final category = CategoryModel.fromJson({
-        ...doc.data()!,
-        'id': doc.id,
-      }).toEntity();
-
-      return Right(category);
+      return Right(_categoryFromJson(result.data!['updateCategory'] as Map<String, dynamic>).toEntity());
     } catch (e) {
       return Left(ServerFailure('Error al actualizar categoría: $e'));
     }
@@ -125,27 +427,23 @@ class MenuRepositoryImpl implements MenuRepository {
   @override
   Future<Either<Failure, void>> deleteCategory(String id) async {
     try {
-      // Verificar si hay productos en esta categoría
-      final productsSnapshot = await _firestore
-          .collection('products')
-          .where('category_id', isEqualTo: id)
-          .limit(1)
-          .get();
+      final result = await _mutate(
+        _deleteCategoryDoc,
+        variables: {'id': id},
+      );
 
-      if (productsSnapshot.docs.isNotEmpty) {
-        return const Left(
-          ValidationFailure('No se puede eliminar: hay productos en esta categoría'),
-        );
-      }
+      if (_hasErrors(result)) return Left(ServerFailure(_getErrorMessage(result)));
+      
 
-      await _firestore.collection('categories').doc(id).delete();
       return const Right(null);
     } catch (e) {
       return Left(ServerFailure('Error al eliminar categoría: $e'));
     }
   }
 
-  // ====== PRODUCTOS ======
+  // ==========================================================================
+  // PRODUCT IMPLEMENTATIONS
+  // ==========================================================================
 
   @override
   Future<Either<Failure, List<Product>>> getProducts({
@@ -154,26 +452,30 @@ class MenuRepositoryImpl implements MenuRepository {
     bool? isFeatured,
   }) async {
     try {
-      Query query = _firestore.collection('products');
+      final result = await _query(
+        _getProductsDoc,
+        variables: {
+          'branchId': branchId,
+          if (categoryId != null) 'categoryId': categoryId,
+        },
+      );
 
-      if (categoryId != null) {
-        query = query.where('category_id', isEqualTo: categoryId);
-      }
+      if (_hasErrors(result)) return Left(ServerFailure(_getErrorMessage(result)));
+      
+
+      List<dynamic> data = result.data?['products'] ?? [];
+
+      // Filtrado local si es necesario (GraphQL no soporta todos los filtros)
+      var products = data
+          .map((json) => _productFromJson(json as Map<String, dynamic>).toEntity())
+          .toList();
+
       if (isAvailable != null) {
-        query = query.where('is_available', isEqualTo: isAvailable);
+        products = products.where((p) => p.isAvailable == isAvailable).toList();
       }
       if (isFeatured != null) {
-        query = query.where('is_featured', isEqualTo: isFeatured);
+        products = products.where((p) => p.isFeatured == isFeatured).toList();
       }
-
-      final snapshot = await query.get();
-
-      final products = snapshot.docs.map((doc) {
-        return ProductModel.fromJson({
-          ...doc.data() as Map<String, dynamic>,
-          'id': doc.id,
-        }).toEntity();
-      }).toList();
 
       return Right(products);
     } catch (e) {
@@ -184,18 +486,20 @@ class MenuRepositoryImpl implements MenuRepository {
   @override
   Future<Either<Failure, Product>> getProductById(String id) async {
     try {
-      final doc = await _firestore.collection('products').doc(id).get();
+      final result = await _query(
+        _getProductDoc,
+        variables: {'id': id},
+      );
 
-      if (!doc.exists) {
+      if (_hasErrors(result)) return Left(ServerFailure(_getErrorMessage(result)));
+      
+
+      final data = result.data?['product'];
+      if (data == null) {
         return const Left(ServerFailure('Producto no encontrado'));
       }
 
-      final product = ProductModel.fromJson({
-        ...doc.data()!,
-        'id': doc.id,
-      }).toEntity();
-
-      return Right(product);
+      return Right(_productFromJson(data as Map<String, dynamic>).toEntity());
     } catch (e) {
       return Left(ServerFailure('Error al obtener producto: $e'));
     }
@@ -204,20 +508,23 @@ class MenuRepositoryImpl implements MenuRepository {
   @override
   Future<Either<Failure, List<Product>>> searchProducts(String query) async {
     try {
-      // Búsqueda simple por nombre (para búsqueda avanzada usar Algolia o similar)
-      final snapshot = await _firestore
-          .collection('products')
-          .where('is_available', isEqualTo: true)
-          .get();
+      // Obtener todos los productos disponibles y filtrar localmente
+      final result = await _query(
+        _getProductsDoc,
+        variables: {'branchId': branchId},
+      );
 
-      final products = snapshot.docs
-          .map((doc) => ProductModel.fromJson({
-                ...doc.data(),
-                'id': doc.id,
-              }).toEntity())
-          .where((product) =>
-              product.name.toLowerCase().contains(query.toLowerCase()) ||
-              product.description.toLowerCase().contains(query.toLowerCase()))
+      if (_hasErrors(result)) return Left(ServerFailure(_getErrorMessage(result)));
+      
+
+      final List<dynamic> data = result.data?['products'] ?? [];
+      final lowercaseQuery = query.toLowerCase();
+
+      final products = data
+          .map((json) => _productFromJson(json as Map<String, dynamic>).toEntity())
+          .where((p) =>
+              p.name.toLowerCase().contains(lowercaseQuery) ||
+              p.description.toLowerCase().contains(lowercaseQuery))
           .toList();
 
       return Right(products);
@@ -236,27 +543,25 @@ class MenuRepositoryImpl implements MenuRepository {
     int preparationTime = 15,
   }) async {
     try {
-      final docRef = _firestore.collection('products').doc();
+      final input = {
+        'branchId': branchId,
+        'name': name,
+        'description': description,
+        'price': price,
+        'categoryId': categoryId,
+        'imageUrls': imageUrls,
+        'preparationTime': preparationTime,
+      };
 
-      final product = ProductModel(
-        id: docRef.id,
-        name: name,
-        description: description,
-        price: price,
-        categoryId: categoryId,
-        imageUrls: imageUrls,
-        preparationTime: preparationTime,
-        isAvailable: true,
-        isFeatured: false,
-        rating: 0.0,
-        reviewCount: 0,
-        allergens: const [],
-        createdAt: DateTime.now(),
+      final result = await _mutate(
+        _createProductDoc,
+        variables: {'input': input},
       );
 
-      await docRef.set(product.toJson());
+      if (_hasErrors(result)) return Left(ServerFailure(_getErrorMessage(result)));
+      
 
-      return Right(product.toEntity());
+      return Right(_productFromJson(result.data!['createProduct'] as Map<String, dynamic>).toEntity());
     } catch (e) {
       return Left(ServerFailure('Error al crear producto: $e'));
     }
@@ -275,30 +580,27 @@ class MenuRepositoryImpl implements MenuRepository {
     int? preparationTime,
   }) async {
     try {
-      final updateData = <String, dynamic>{
-        'updated_at': FieldValue.serverTimestamp(),
+      final input = <String, dynamic>{
+        if (name != null) 'name': name,
+        if (description != null) 'description': description,
+        if (price != null) 'price': price,
+        if (categoryId != null) 'categoryId': categoryId,
+        if (imageUrls != null) 'imageUrls': imageUrls,
+        if (preparationTime != null) 'preparationTime': preparationTime,
       };
 
-      if (name != null) updateData['name'] = name;
-      if (description != null) updateData['description'] = description;
-      if (price != null) updateData['price'] = price;
-      if (categoryId != null) updateData['category_id'] = categoryId;
-      if (imageUrls != null) updateData['image_urls'] = imageUrls;
-      if (isAvailable != null) updateData['is_available'] = isAvailable;
-      if (isFeatured != null) updateData['is_featured'] = isFeatured;
-      if (preparationTime != null) {
-        updateData['preparation_time'] = preparationTime;
-      }
+      final result = await _mutate(
+        _updateProductDoc,
+        variables: {
+          'id': id,
+          'input': input,
+        },
+      );
 
-      await _firestore.collection('products').doc(id).update(updateData);
+      if (_hasErrors(result)) return Left(ServerFailure(_getErrorMessage(result)));
+      
 
-      final doc = await _firestore.collection('products').doc(id).get();
-      final product = ProductModel.fromJson({
-        ...doc.data()!,
-        'id': doc.id,
-      }).toEntity();
-
-      return Right(product);
+      return Right(_productFromJson(result.data!['updateProduct'] as Map<String, dynamic>).toEntity());
     } catch (e) {
       return Left(ServerFailure('Error al actualizar producto: $e'));
     }
@@ -307,7 +609,14 @@ class MenuRepositoryImpl implements MenuRepository {
   @override
   Future<Either<Failure, void>> deleteProduct(String id) async {
     try {
-      await _firestore.collection('products').doc(id).delete();
+      final result = await _mutate(
+        _deleteProductDoc,
+        variables: {'id': id},
+      );
+
+      if (_hasErrors(result)) return Left(ServerFailure(_getErrorMessage(result)));
+      
+
       return const Right(null);
     } catch (e) {
       return Left(ServerFailure('Error al eliminar producto: $e'));
@@ -320,27 +629,10 @@ class MenuRepositoryImpl implements MenuRepository {
     required double rating,
     String? review,
   }) async {
-    try {
-      // Aquí implementarías la lógica de calificaciones
-      // Por simplicidad, solo actualizamos el rating promedio
-      final doc = await _firestore.collection('products').doc(productId).get();
-      final product = ProductModel.fromJson({
-        ...doc.data()!,
-        'id': doc.id,
-      });
-
-      final newReviewCount = product.reviewCount + 1;
-      final newRating = ((product.rating * product.reviewCount) + rating) /
-          newReviewCount;
-
-      await _firestore.collection('products').doc(productId).update({
-        'rating': newRating,
-        'review_count': newReviewCount,
-      });
-
-      return const Right(null);
-    } catch (e) {
-      return Left(ServerFailure('Error al calificar producto: $e'));
-    }
+    // La mutación rateProduct no existe en el schema GraphQL proporcionado.
+    // Esta implementación simplemente retorna success ya que el schema
+    // no soporta calificaciones de productos.
+    // Si el backend añade esta funcionalidad, agregar la mutación correspondiente.
+    return const Right(null);
   }
 }

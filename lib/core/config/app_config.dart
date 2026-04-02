@@ -14,6 +14,10 @@ class AppConfig {
   static String get printServiceUrl => 
       dotenv.env['PRINT_SERVICE_URL'] ?? 'http://localhost:8080';
   
+  /// GraphQL API endpoint
+  static String get graphqlApiUrl =>
+      dotenv.env['GRAPHQL_API_URL'] ?? 'http://localhost:3000/graphql';
+  
   static bool get isDebug => 
       dotenv.env['DEBUG_MODE']?.toLowerCase() == 'true';
   
