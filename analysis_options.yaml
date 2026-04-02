@@ -1,0 +1,37 @@
+# Análisis de Código Flutter
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # Errores
+    - avoid_print
+    - avoid_relative_lib_imports
+    - avoid_types_as_parameter_names
+    - no_duplicate_case_values
+    - valid_regexps
+    
+    # Estilo
+    - camel_case_types
+    - library_names
+    - file_names
+    - package_names
+    - curly_braces_in_flow_control_structures
+    - prefer_single_quotes
+    - prefer_const_constructors
+    - prefer_const_declarations
+    - prefer_const_literals_to_create_immutables
+    
+    # Documentación
+    - slash_for_doc_comments
+    
+    # Diseño
+    - always_declare_return_types
+    - annotate_overrides
+    - avoid_init_to_null
+    - avoid_return_types_on_setters
+    - await_only_futures
+    - empty_catches
+    - empty_constructor_bodies
+    - unnecessary_this
+    - unnecessary_new
+    - unnecessary_const
